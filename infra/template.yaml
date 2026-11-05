@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  CostLens - serverless AWS cost anomaly detection. S3 receives Cost and Usage
+  Report CSVs, an ingest Lambda aggregates them into DynamoDB, and an HTTP API
+  Lambda serves summary, forecast and anomaly endpoints. Sized for the AWS Free Tier.
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  AllowedOrigin:
+    Type: String
+    Default: "*"
+    Description: CORS origin allowed to call the API (for example the dashboard URL).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    MemorySize: 512
+    Timeout: 60
+    CodeUri: ../build/lambda
+    Environment:
+      Variables:
+        COSTLENS_TABLE: !Ref DailyCostTable
+        HOME: /tmp
+
+Resources:
+  ReportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "costlens-reports-${AWS::AccountId}-${Stage}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-raw-reports
+            Status: Enabled
+            ExpirationInDays: 30
+
+  DailyCostTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "costlens-daily-cost-${Stage}"
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      AttributeDefinitions:
+        - AttributeName: service
+          AttributeType: S
+        - AttributeName: day
+          AttributeType: S
+      KeySchema:
+        - AttributeName: service
+          KeyType: HASH
+        - AttributeName: day
+          KeyType: RANGE
+
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: aws.handlers.ingest_handler
+      Description: Aggregates uploaded CUR CSVs into daily cost per service.
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Sub "costlens-reports-${AWS::AccountId}-${Stage}"
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DailyCostTable
+      Events:
+        ReportUploaded:
+          Type: S3
+          Properties:
+            Bucket: !Ref ReportBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: cur/
+                  - Name: suffix
+                    Value: .csv
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: aws.handlers.api_handler
+      Description: Serves CostLens analytics over an HTTP API.
+      Timeout: 15
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DailyCostTable
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /health
+            Method: GET
+        Analytics:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/{proxy+}
+            Method: GET
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins: [!Ref AllowedOrigin]
+        AllowMethods: [GET]
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the CostLens HTTP API
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  ReportBucketName:
+    Description: Upload CUR CSVs to s3://<bucket>/cur/
+    Value: !Ref ReportBucket
+  TableName:
+    Value: !Ref DailyCostTable

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CostLens · AWS cost anomaly detection</title>
+  <meta name="description" content="CostLens dashboard: AWS spend summary, month-end forecast and cost anomalies.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>CostLens</h1>
+        <p class="tag">AWS cost anomaly detection and spend forecasting</p>
+      </div>
+    </div>
+    <div class="status" id="status">Loading…</div>
+  </header>
+
+  <main>
+    <section class="kpis" aria-label="Key figures">
+      <article class="kpi"><h2>Last 30 days</h2><p id="kpi-period">–</p><small id="kpi-change">–</small></article>
+      <article class="kpi"><h2>Month to date</h2><p id="kpi-mtd">–</p><small id="kpi-month">–</small></article>
+      <article class="kpi"><h2>Projected month-end</h2><p id="kpi-projected">–</p><small id="kpi-range">–</small></article>
+      <article class="kpi"><h2>Anomalies</h2><p id="kpi-anomalies">–</p><small id="kpi-excess">–</small></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Daily spend by service</h2>
+        <label>Service
+          <select id="service-filter"><option value="">All services</option></select>
+        </label>
+      </div>
+      <canvas id="daily-chart" height="110" aria-label="Daily spend chart" role="img"></canvas>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-head"><h2>Month-end forecast</h2></div>
+        <canvas id="forecast-chart" height="150" aria-label="Forecast chart" role="img"></canvas>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Spend share, last 30 days</h2></div>
+        <table class="table" id="services-table">
+          <thead><tr><th>Service</th><th class="num">Cost</th><th class="num">Share</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Detected anomalies</h2>
+        <label>Sensitivity (robust z ≥ <output id="threshold-value">4.0</output>)
+          <input id="threshold" type="range" min="2.5" max="8" step="0.5" value="4.0">
+        </label>
+      </div>
+      <table class="table" id="anomaly-table">
+        <thead><tr><th>Day</th><th>Service</th><th class="num">Cost</th><th class="num">Expected</th><th class="num">Excess</th><th class="num">z</th><th>Severity</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="upload-panel" hidden>
+      <div class="panel-head"><h2>Ingest a Cost and Usage Report</h2></div>
+      <form id="upload-form">
+        <input type="file" id="upload-file" accept=".csv" required>
+        <button type="submit">Upload CSV</button>
+        <span id="upload-result" class="muted"></span>
+      </form>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span id="source-note"></span>
+    <a href="https://github.com/Gonugunta-Venkata-Jayanth/CostLens">Source on GitHub</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
